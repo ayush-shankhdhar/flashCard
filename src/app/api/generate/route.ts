@@ -4,6 +4,11 @@ import { NextRequest } from "next/server";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse");
 
+interface GeneratedCardInput {
+  question: string;
+  answer: string;
+}
+
 interface GeneratedCard {
   front: string;
   back: string;
@@ -11,28 +16,34 @@ interface GeneratedCard {
   difficulty: string;
 }
 
-const SYSTEM_PROMPT = `You are an expert educator creating comprehensive flashcards for deep learning and long-term retention. Given a section of educational content, generate flashcards that cover:
+const SYSTEM_PROMPT = `You are an expert flashcard generator designed for speed and accuracy.
 
-1. KEY CONCEPTS — Core ideas that form the backbone of understanding
-2. DEFINITIONS — Precise definitions of important terms
-3. RELATIONSHIPS — How concepts connect, compare, or contrast
-4. WORKED EXAMPLES — Step-by-step problem solutions or concrete examples
-5. EDGE CASES — Common misconceptions, exceptions, or tricky details
+Your task:
+Convert the given text into high-quality flashcards optimized for quick learning and spaced repetition.
 
-Rules:
-- Each card should test ONE specific piece of knowledge
-- Questions should require ACTIVE RECALL, not just recognition
-- Answers should be concise but complete (2-4 sentences max)
-- Vary question formats: "What is...", "Why does...", "How does X relate to Y...", "What would happen if...", "Explain the difference between..."
-- Assign each card a category: one of "concept", "definition", "relationship", "example", "edge-case"
-- Assign each card a difficulty: one of "easy", "medium", "hard"
-- Generate 12–20 high-quality cards per chunk of content
-- Make cards that feel like they were written by a great teacher — clear, precise, thought-provoking
+STRICT RULES:
+- Generate ONLY the most important concepts (no fluff).
+- Maximum 10–15 flashcards per input chunk.
+- Each flashcard must be concise (max 20 words per answer).
+- Avoid repetition.
+- Prefer definitions, key facts, formulas, and direct Q&A.
+- If text is long, prioritize headings, bold terms, and summaries.
+- Ignore examples, stories, and unnecessary explanations.
 
-Respond ONLY with a valid JSON array. Each item must have exactly these fields:
-{ "front": "question text", "back": "answer text", "category": "concept|definition|relationship|example|edge-case", "difficulty": "easy|medium|hard" }
+FORMAT:
+Return JSON only.
 
-Do NOT include any markdown, code fences, or extra text. Only the JSON array.`;
+[
+  {
+    "question": "Clear and short question",
+    "answer": "Concise answer"
+  }
+]
+
+OPTIMIZATION:
+- Do not explain reasoning.
+- Do not add extra text.
+- Be fast and direct.`;
 
 function chunkText(text: string, chunkSize: number = 3000, overlap: number = 200): string[] {
   const chunks: string[] = [];
@@ -55,17 +66,12 @@ function cleanJsonString(raw: string): string {
   return s.trim();
 }
 
-const VALID_CATEGORIES = new Set(["concept", "definition", "relationship", "example", "edge-case"]);
-const VALID_DIFFICULTIES = new Set(["easy", "medium", "hard"]);
-
-function validateCard(card: GeneratedCard): boolean {
+function validateCard(card: any): card is GeneratedCardInput {
   return (
-    typeof card.front === "string" &&
-    card.front.length > 5 &&
-    typeof card.back === "string" &&
-    card.back.length > 3 &&
-    VALID_CATEGORIES.has(card.category) &&
-    VALID_DIFFICULTIES.has(card.difficulty)
+    typeof card.question === "string" &&
+    card.question.length > 5 &&
+    typeof card.answer === "string" &&
+    card.answer.length > 3
   );
 }
 
@@ -130,11 +136,16 @@ export async function POST(request: NextRequest) {
         const cleaned = cleanJsonString(rawText);
 
         try {
-          const parsed = JSON.parse(cleaned) as GeneratedCard[];
+          const parsed = JSON.parse(cleaned);
           if (Array.isArray(parsed)) {
             for (const card of parsed) {
               if (validateCard(card)) {
-                allCards.push(card);
+                allCards.push({
+                  front: card.question,
+                  back: card.answer,
+                  category: "concept",
+                  difficulty: "medium"
+                });
               }
             }
           }
