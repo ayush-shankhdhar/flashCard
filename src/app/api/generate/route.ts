@@ -7,6 +7,8 @@ const pdfParse = require("pdf-parse");
 interface GeneratedCardInput {
   question: string;
   answer: string;
+  category?: string;
+  difficulty?: string;
 }
 
 interface GeneratedCard {
@@ -16,34 +18,47 @@ interface GeneratedCard {
   difficulty: string;
 }
 
-const SYSTEM_PROMPT = `You are an expert flashcard generator designed for speed and accuracy.
+const VALID_CATEGORIES = new Set(["concept", "definition", "example", "relationship", "edge-case"]);
+const VALID_DIFFICULTIES = new Set(["easy", "medium", "hard"]);
+
+const SYSTEM_PROMPT = `You are an expert flashcard generator for spaced repetition learning systems.
 
 Your task:
-Convert the given text into high-quality flashcards optimized for quick learning and spaced repetition.
+Convert the given text into deep, comprehensive flashcards that test true understanding — not just surface recall.
+
+CARD TYPES TO GENERATE:
+- "definition": Key term definitions (What is X?)
+- "concept": Core concepts and how they work (How does X work? Why is X important?)
+- "relationship": How concepts connect (How does X relate to Y? What is the difference between X and Y?)
+- "example": Concrete examples and applications (Give an example of X. When would you use X?)
+- "edge-case": Exceptions, gotchas, and boundary conditions (What happens when X fails? What is a common misconception about X?)
+
+DIFFICULTY LEVELS:
+- "easy": Basic recall of definitions and simple facts
+- "medium": Understanding how something works, requires explanation
+- "hard": Analysis, comparison, edge cases, requires deep understanding
 
 STRICT RULES:
-- Generate ONLY the most important concepts (no fluff).
-- Maximum 10–15 flashcards per input chunk.
-- Each flashcard must be concise (max 20 words per answer).
-- Avoid repetition.
-- Prefer definitions, key facts, formulas, and direct Q&A.
-- If text is long, prioritize headings, bold terms, and summaries.
-- Ignore examples, stories, and unnecessary explanations.
+- Generate 10–15 flashcards per input.
+- Each answer must be concise (max 25 words).
+- Vary card types — aim for a mix of at least 3 different categories.
+- Vary difficulty — include easy, medium, AND hard cards.
+- Test understanding, not memorization of sentences.
+- For relationships, compare/contrast related concepts.
+- For edge cases, test boundary conditions and common mistakes.
+- No duplicate questions. No fluff. No filler.
 
 FORMAT:
-Return JSON only.
+Return JSON only. No explanation. No markdown.
 
 [
   {
-    "question": "Clear and short question",
-    "answer": "Concise answer"
+    "question": "Clear, specific question",
+    "answer": "Concise, accurate answer",
+    "category": "concept|definition|relationship|example|edge-case",
+    "difficulty": "easy|medium|hard"
   }
-]
-
-OPTIMIZATION:
-- Do not explain reasoning.
-- Do not add extra text.
-- Be fast and direct.`;
+]`;
 
 function chunkText(text: string, chunkSize: number = 3000, overlap: number = 200): string[] {
   const chunks: string[] = [];
@@ -66,13 +81,79 @@ function cleanJsonString(raw: string): string {
   return s.trim();
 }
 
-function validateCard(card: any): card is GeneratedCardInput {
+function validateCard(card: unknown): card is GeneratedCardInput {
+  if (typeof card !== "object" || card === null) return false;
+  const c = card as Record<string, unknown>;
   return (
-    typeof card.question === "string" &&
-    card.question.length > 5 &&
-    typeof card.answer === "string" &&
-    card.answer.length > 3
+    typeof c.question === "string" &&
+    c.question.length > 5 &&
+    typeof c.answer === "string" &&
+    c.answer.length > 3
   );
+}
+
+/**
+ * Process chunks with concurrency limit to avoid rate-limiting.
+ */
+async function processChunksParallel(
+  ai: GoogleGenAI,
+  chunks: string[],
+  maxConcurrent: number = 3
+): Promise<GeneratedCard[]> {
+  const allCards: GeneratedCard[] = [];
+  
+  // Process in batches of maxConcurrent
+  for (let i = 0; i < chunks.length; i += maxConcurrent) {
+    const batch = chunks.slice(i, i + maxConcurrent);
+    const promises = batch.map(async (chunk) => {
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemma-4-31b-it",
+          contents: `Here is the educational content to create flashcards from:\n\n---\n${chunk}\n---\n\nGenerate comprehensive, deep flashcards from this content. Include varied categories (definition, concept, relationship, example, edge-case) and varied difficulty levels.`,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            temperature: 0.7,
+            maxOutputTokens: 4096,
+          },
+        });
+
+        const rawText = response.text ?? "";
+        const cleaned = cleanJsonString(rawText);
+
+        try {
+          const parsed = JSON.parse(cleaned);
+          if (Array.isArray(parsed)) {
+            const cards: GeneratedCard[] = [];
+            for (const card of parsed) {
+              if (validateCard(card)) {
+                cards.push({
+                  front: card.question,
+                  back: card.answer,
+                  category: VALID_CATEGORIES.has(card.category ?? "") ? card.category! : "concept",
+                  difficulty: VALID_DIFFICULTIES.has(card.difficulty ?? "") ? card.difficulty! : "medium",
+                });
+              }
+            }
+            return cards;
+          }
+        } catch {
+          console.warn("Failed to parse chunk response as JSON, skipping chunk");
+        }
+      } catch (chunkError) {
+        console.warn("Failed to generate for chunk, skipping:", chunkError);
+      }
+      return [] as GeneratedCard[];
+    });
+
+    const results = await Promise.allSettled(promises);
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        allCards.push(...result.value);
+      }
+    }
+  }
+
+  return allCards;
 }
 
 export async function POST(request: NextRequest) {
@@ -116,46 +197,36 @@ export async function POST(request: NextRequest) {
     // Chunk the text
     const chunks = chunkText(fullText);
 
-    // Generate flashcards for each chunk using Gemma 4 31B IT
     const ai = new GoogleGenAI({ apiKey });
-    const allCards: GeneratedCard[] = [];
 
-    for (const chunk of chunks) {
+    // Fire summary generation IN PARALLEL with chunk processing
+    const summaryPromise = (async () => {
       try {
-        const response = await ai.models.generateContent({
+        const summaryResponse = await ai.models.generateContent({
           model: "gemma-4-31b-it",
-          contents: `Here is the educational content to create flashcards from:\n\n---\n${chunk}\n---\n\nGenerate comprehensive flashcards from this content.`,
+          contents: `Based on this text, provide a short title (max 6 words) and a one-sentence description for a flashcard deck. Text:\n\n${fullText.slice(0, 1500)}\n\nRespond ONLY with JSON: { "title": "...", "description": "..." }`,
           config: {
-            systemInstruction: SYSTEM_PROMPT,
-            temperature: 0.7,
-            maxOutputTokens: 4096,
+            temperature: 0.3,
+            maxOutputTokens: 200,
           },
         });
 
-        const rawText = response.text ?? "";
-        const cleaned = cleanJsonString(rawText);
-
-        try {
-          const parsed = JSON.parse(cleaned);
-          if (Array.isArray(parsed)) {
-            for (const card of parsed) {
-              if (validateCard(card)) {
-                allCards.push({
-                  front: card.question,
-                  back: card.answer,
-                  category: "concept",
-                  difficulty: "medium"
-                });
-              }
-            }
-          }
-        } catch {
-          console.warn("Failed to parse chunk response as JSON, skipping chunk");
-        }
-      } catch (chunkError) {
-        console.warn("Failed to generate for chunk, skipping:", chunkError);
+        const summaryText = cleanJsonString(summaryResponse.text ?? "");
+        const summary = JSON.parse(summaryText);
+        return {
+          title: summary.title || null,
+          description: summary.description || null,
+        };
+      } catch {
+        return { title: null, description: null };
       }
-    }
+    })();
+
+    // Process all chunks with concurrency limit (max 3 parallel)
+    const cardsPromise = processChunksParallel(ai, chunks, 3);
+
+    // Await both in parallel
+    const [allCards, summaryResult] = await Promise.all([cardsPromise, summaryPromise]);
 
     if (allCards.length === 0) {
       return Response.json(
@@ -173,27 +244,10 @@ export async function POST(request: NextRequest) {
       return true;
     });
 
-    // Generate a summary/name from the first chunk
-    let deckName = file.name.replace(/\.pdf$/i, "");
-    let deckDescription = "";
-
-    try {
-      const summaryResponse = await ai.models.generateContent({
-        model: "gemma-4-31b-it",
-        contents: `Based on this text, provide a short title (max 6 words) and a one-sentence description for a flashcard deck. Text:\n\n${fullText.slice(0, 1500)}\n\nRespond ONLY with JSON: { "title": "...", "description": "..." }`,
-        config: {
-          temperature: 0.3,
-          maxOutputTokens: 200,
-        },
-      });
-
-      const summaryText = cleanJsonString(summaryResponse.text ?? "");
-      const summary = JSON.parse(summaryText);
-      if (summary.title) deckName = summary.title;
-      if (summary.description) deckDescription = summary.description;
-    } catch {
-      deckDescription = `${uniqueCards.length} flashcards generated from ${file.name}`;
-    }
+    const deckName = summaryResult.title || file.name.replace(/\.pdf$/i, "");
+    const deckDescription =
+      summaryResult.description ||
+      `${uniqueCards.length} flashcards generated from ${file.name}`;
 
     return Response.json({
       name: deckName,

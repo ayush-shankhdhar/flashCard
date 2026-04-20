@@ -14,6 +14,9 @@ export default function Header() {
           <Link href="/" className="header-nav-link">
             📚 My Decks
           </Link>
+          <Link href="/dashboard" className="header-nav-link">
+            📊 Dashboard
+          </Link>
         </nav>
       </div>
     </header>

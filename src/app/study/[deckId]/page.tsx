@@ -7,6 +7,7 @@ import StudyComplete from "@/components/StudyComplete";
 import { Card, Deck } from "@/lib/types";
 import { getDeck, updateDeckCards } from "@/lib/storage";
 import { calculateSM2, getCardsForReview } from "@/lib/sm2";
+import { recordSession } from "@/lib/studyHistory";
 
 export default function StudyPage() {
   const params = useParams();
@@ -53,18 +54,22 @@ export default function StudyPage() {
       const updatedDeck = updateDeckCards(deck.id, updatedCards);
       if (updatedDeck) setDeck(updatedDeck);
 
-      setCardsReviewed((prev) => prev + 1);
-      if (quality >= 3) setCorrectCount((prev) => prev + 1);
+      const newReviewed = cardsReviewed + 1;
+      const newCorrect = quality >= 3 ? correctCount + 1 : correctCount;
+      setCardsReviewed(newReviewed);
+      if (quality >= 3) setCorrectCount(newCorrect);
 
       // Move to next card
       if (currentIndex + 1 >= sessionCards.length) {
+        // Record session in study history
+        recordSession(deck.id, deck.name, newReviewed, newCorrect);
         setSessionComplete(true);
       } else {
         setCurrentIndex((prev) => prev + 1);
         setFlipped(false);
       }
     },
-    [deck, currentIndex, sessionCards]
+    [deck, currentIndex, sessionCards, cardsReviewed, correctCount]
   );
 
   const handleContinue = useCallback(() => {
@@ -84,6 +89,48 @@ export default function StudyPage() {
   const handleBackToDecks = useCallback(() => {
     router.push("/");
   }, [router]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Don't capture if user is typing in an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      if (sessionComplete || loading || !deck) return;
+
+      if (e.code === "Space" || e.code === "Enter") {
+        e.preventDefault();
+        if (!flipped) {
+          setFlipped(true);
+        }
+      }
+
+      // Rating shortcuts — only when card is flipped
+      if (flipped) {
+        if (e.key === "1") {
+          e.preventDefault();
+          handleRate(1);
+        } else if (e.key === "2") {
+          e.preventDefault();
+          handleRate(2);
+        } else if (e.key === "3") {
+          e.preventDefault();
+          handleRate(4);
+        } else if (e.key === "4") {
+          e.preventDefault();
+          handleRate(5);
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [flipped, sessionComplete, loading, deck, handleRate]);
 
   if (loading) {
     return (
@@ -177,43 +224,59 @@ export default function StudyPage() {
 
       {/* Rating Buttons — only show when flipped */}
       {flipped && (
-        <div className="rating-buttons" style={{ animation: "fadeInUp 0.3s ease-out" }}>
-          <button
-            className="rating-btn rating-btn-again"
-            onClick={() => handleRate(1)}
-          >
-            Again
-            <span className="rating-btn-label">1 day</span>
-          </button>
-          <button
-            className="rating-btn rating-btn-hard"
-            onClick={() => handleRate(2)}
-          >
-            Hard
-            <span className="rating-btn-label">Review soon</span>
-          </button>
-          <button
-            className="rating-btn rating-btn-good"
-            onClick={() => handleRate(4)}
-          >
-            Good
-            <span className="rating-btn-label">
-              {currentCard.interval > 0
-                ? `${Math.round(currentCard.interval * currentCard.easeFactor)}d`
-                : "1 day"}
-            </span>
-          </button>
-          <button
-            className="rating-btn rating-btn-easy"
-            onClick={() => handleRate(5)}
-          >
-            Easy
-            <span className="rating-btn-label">
-              {currentCard.interval > 0
-                ? `${Math.round(currentCard.interval * currentCard.easeFactor * 1.3)}d`
-                : "6 days"}
-            </span>
-          </button>
+        <div style={{ animation: "fadeInUp 0.3s ease-out" }}>
+          <div className="rating-buttons">
+            <button
+              className="rating-btn rating-btn-again"
+              onClick={() => handleRate(1)}
+            >
+              Again
+              <span className="rating-btn-label">1 day</span>
+            </button>
+            <button
+              className="rating-btn rating-btn-hard"
+              onClick={() => handleRate(2)}
+            >
+              Hard
+              <span className="rating-btn-label">Review soon</span>
+            </button>
+            <button
+              className="rating-btn rating-btn-good"
+              onClick={() => handleRate(4)}
+            >
+              Good
+              <span className="rating-btn-label">
+                {currentCard.interval > 0
+                  ? `${Math.round(currentCard.interval * currentCard.easeFactor)}d`
+                  : "1 day"}
+              </span>
+            </button>
+            <button
+              className="rating-btn rating-btn-easy"
+              onClick={() => handleRate(5)}
+            >
+              Easy
+              <span className="rating-btn-label">
+                {currentCard.interval > 0
+                  ? `${Math.round(currentCard.interval * currentCard.easeFactor * 1.3)}d`
+                  : "6 days"}
+              </span>
+            </button>
+          </div>
+          <div className="keyboard-hints">
+            <span>⌨️</span>
+            <span><kbd>1</kbd> Again</span>
+            <span><kbd>2</kbd> Hard</span>
+            <span><kbd>3</kbd> Good</span>
+            <span><kbd>4</kbd> Easy</span>
+          </div>
+        </div>
+      )}
+
+      {/* Flip hint */}
+      {!flipped && (
+        <div className="keyboard-hints" style={{ marginTop: "var(--space-md)" }}>
+          <span>⌨️ Press <kbd>Space</kbd> to flip</span>
         </div>
       )}
     </div>

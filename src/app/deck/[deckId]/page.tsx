@@ -25,6 +25,12 @@ export default function DeckDetailPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Inline edit state
+  const [editingName, setEditingName] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+
   useEffect(() => {
     const loadedDeck = getDeck(deckId);
     if (!loadedDeck) {
@@ -32,6 +38,8 @@ export default function DeckDetailPage() {
       return;
     }
     setDeck(loadedDeck);
+    setEditName(loadedDeck.name);
+    setEditDesc(loadedDeck.description);
     setLoading(false);
   }, [deckId, router]);
 
@@ -53,6 +61,22 @@ export default function DeckDetailPage() {
       router.push("/");
     }
   }, [deck, router]);
+
+  const handleSaveName = useCallback(() => {
+    if (!deck || !editName.trim()) return;
+    const updatedDeck = { ...deck, name: editName.trim() };
+    saveDeck(updatedDeck);
+    setDeck(updatedDeck);
+    setEditingName(false);
+  }, [deck, editName]);
+
+  const handleSaveDesc = useCallback(() => {
+    if (!deck) return;
+    const updatedDeck = { ...deck, description: editDesc.trim() };
+    saveDeck(updatedDeck);
+    setDeck(updatedDeck);
+    setEditingDesc(false);
+  }, [deck, editDesc]);
 
   if (loading) {
     return (
@@ -113,8 +137,64 @@ export default function DeckDetailPage() {
 
       {/* Header */}
       <div className="deck-detail-header">
-        <h1 className="deck-detail-title">{deck.name}</h1>
-        <p className="deck-detail-description">{deck.description}</p>
+        {/* Editable title */}
+        {editingName ? (
+          <div className="inline-edit-wrapper">
+            <input
+              className="inline-edit-input inline-edit-title"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveName();
+                if (e.key === "Escape") {
+                  setEditName(deck.name);
+                  setEditingName(false);
+                }
+              }}
+              onBlur={handleSaveName}
+              autoFocus
+            />
+          </div>
+        ) : (
+          <h1
+            className="deck-detail-title editable-text"
+            onClick={() => setEditingName(true)}
+            title="Click to rename"
+          >
+            {deck.name}
+            <span className="edit-icon">✏️</span>
+          </h1>
+        )}
+
+        {/* Editable description */}
+        {editingDesc ? (
+          <div className="inline-edit-wrapper">
+            <input
+              className="inline-edit-input inline-edit-desc"
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveDesc();
+                if (e.key === "Escape") {
+                  setEditDesc(deck.description);
+                  setEditingDesc(false);
+                }
+              }}
+              onBlur={handleSaveDesc}
+              autoFocus
+            />
+          </div>
+        ) : (
+          <p
+            className="deck-detail-description editable-text"
+            onClick={() => setEditingDesc(true)}
+            title="Click to edit description"
+          >
+            {deck.description}
+            <span className="edit-icon">✏️</span>
+          </p>
+        )}
+
         <div className="deck-detail-meta">
           <span className="deck-detail-meta-item">
             📄 {deck.sourceFileName}

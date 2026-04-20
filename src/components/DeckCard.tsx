@@ -21,19 +21,40 @@ function timeAgo(dateStr: string | null): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+function getDueCount(deck: Deck): number {
+  const now = new Date();
+  let count = 0;
+  for (const card of deck.cards) {
+    if (!card.lastReviewDate) {
+      count++; // New cards count as "due"
+    } else if (new Date(card.nextReviewDate) <= now) {
+      count++;
+    }
+  }
+  return count;
+}
+
 export default function DeckCard({ deck, onDelete }: DeckCardProps) {
   const { stats } = deck;
   const total = stats.totalCards || 1;
   const masteredPct = (stats.mastered / total) * 100;
   const learningPct = (stats.learning / total) * 100;
+  const dueCount = getDueCount(deck);
 
   return (
     <div className="deck-card">
       <div className="deck-card-header">
         <h3 className="deck-card-title">{deck.name}</h3>
-        <span className="deck-card-count">
-          📇 {stats.totalCards}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+          {dueCount > 0 && (
+            <span className="due-badge">
+              {dueCount} due
+            </span>
+          )}
+          <span className="deck-card-count">
+            📇 {stats.totalCards}
+          </span>
+        </div>
       </div>
 
       <p className="deck-card-description">{deck.description}</p>
