@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ⚡ FlashForge
 
-## Getting Started
+<div align="center">
+  <h3>Transform any PDF into an AI-powered spaced-repetition flashcard deck instantly.</h3>
+  <p>Built with Next.js and Google's Generative AI.</p>
+</div>
 
-First, run the development server:
+---
+
+## 🌟 Overview
+
+**FlashForge** is a full-stack educational tool designed to supercharge learning. By leveraging advanced AI models and the proven SM-2 spaced repetition algorithm, it automatically extracts knowledge from PDF documents and generates high-quality flashcards. Say goodbye to manual flashcard creation and hello to optimized study sessions!
+
+## ✨ Features
+
+- **📄 Smart PDF Parsing:** Upload any PDF document, and the engine will seamlessly extract text and core concepts.
+- **🧠 AI-Powered Content Generation:** Integrates with **Google's Generative AI** to intelligently process text and generate concise, relevant flashcards while filtering out fluff.
+- **🔄 Spaced Repetition (SM-2 Algorithm):** Features a robust study mode utilizing the SM-2 algorithm to optimize memory retention, ensuring you review cards at the perfect time.
+- **🎨 Beautiful & Responsive UI:** A modern, clean, and interactive interface built with React and Next.js, complete with progress tracking and intuitive deck management.
+
+## 🛠️ Tech Stack
+
+- **Framework:** [Next.js](https://nextjs.org/)
+- **Frontend:** React
+- **AI Integration:** `@google/genai` (Google Generative AI SDK)
+- **PDF Processing:** `pdf-parse`
+- **State Management & Utilities:** `uuid`
+
+## 🚀 Getting Started
+
+Follow these steps to set up the project locally:
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/ayush-shankhdhar/flashCard.git
+cd flashCard
+```
+
+### 2. Install dependencies
+
+Make sure you have Node.js installed, then run:
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+```
+
+### 3. Configure Environment Variables
+
+Create a `.env.local` file in the root directory and add your Google Gemini API key:
+
+```env
+GOOGLE_GENAI_API_KEY=your_google_api_key_here
+```
+
+*(Note: You can obtain an API key from [Google AI Studio](https://aistudio.google.com/).)*
+
+### 4. Run the Development Server
+
+Start the app locally:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser to start building your flashcard decks!
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📂 Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/app/` - Next.js App Router pages and API routes (contains the core AI generation logic).
+- `src/components/` - Reusable React components (Upload Zone, Flashcard viewer, etc.).
+- `src/lib/` or `src/utils/` - Utility functions, including the spaced repetition algorithm and PDF parsing logic.
 
-## Learn More
+## 🤝 Contributing
 
-To learn more about Next.js, take a look at the following resources:
+Contributions are welcome! If you'd like to improve the flashcard generation prompts, enhance the study algorithm, or build new UI features, feel free to open an issue or submit a Pull Request.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📜 License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is open-source and available under the MIT License.
